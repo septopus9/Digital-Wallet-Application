@@ -1,6 +1,5 @@
 package com.rs.payments.wallet.controller;
 
-import java.util.UUID;
 import com.rs.payments.wallet.dto.CreateUserRequest;
 import com.rs.payments.wallet.model.User;
 import com.rs.payments.wallet.service.UserService;
@@ -11,6 +10,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
+
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,7 +39,7 @@ class UserControllerTest {
         ResponseEntity<User> response = userController.createUser(request);
 
         // Then
-        assertEquals(200, response.getStatusCode().value());
+        assertEquals(201, response.getStatusCode().value());  //changes here 200 to 201
         assertEquals(createdUser, response.getBody());
         verify(userService, times(1)).createUser(any(User.class));
     }

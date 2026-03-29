@@ -1,6 +1,5 @@
 package com.rs.payments.wallet.controller;
 
-import java.util.UUID;
 import com.rs.payments.wallet.dto.CreateWalletRequest;
 import com.rs.payments.wallet.model.Wallet;
 import com.rs.payments.wallet.service.WalletService;
@@ -13,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
@@ -45,7 +45,7 @@ class WalletControllerTest {
         ResponseEntity<Wallet> response = walletController.createWallet(request);
 
         // Then
-        assertEquals(200, response.getStatusCode().value());
+        assertEquals(201, response.getStatusCode().value()); //changes here 200 to 201
         assertEquals(wallet, response.getBody());
         verify(walletService, times(1)).createWalletForUser(userId);
     }
