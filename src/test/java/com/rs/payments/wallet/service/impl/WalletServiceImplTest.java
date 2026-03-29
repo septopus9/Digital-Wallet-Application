@@ -1,7 +1,10 @@
 package com.rs.payments.wallet.service.impl;
 
 import com.rs.payments.wallet.exception.BadRequestException;
+import com.rs.payments.wallet.exception.InsufficientFundsException;
 import com.rs.payments.wallet.exception.ResourceNotFoundException;
+import com.rs.payments.wallet.model.Transaction;
+import com.rs.payments.wallet.model.TransactionType;
 import com.rs.payments.wallet.model.User;
 import com.rs.payments.wallet.model.Wallet;
 import com.rs.payments.wallet.repository.TransactionRepository;
@@ -9,8 +12,10 @@ import com.rs.payments.wallet.repository.UserRepository;
 import com.rs.payments.wallet.repository.WalletRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -19,6 +24,7 @@ import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -42,54 +48,65 @@ class WalletServiceImplTest {
 
 
     private UUID userId;
+    private UUID walletId;
     private User user;
+    private Wallet wallet;
 
     @BeforeEach
     void setUp() {
-        userId = UUID.randomUUID();
+        userId   = UUID.randomUUID();
+        walletId = UUID.randomUUID();
+
         user = new User();
         user.setId(userId);
+
+        wallet = new Wallet();
+        wallet.setId(walletId);
+        wallet.setUser(user);
+        wallet.setBalance(BigDecimal.valueOf(100));
     }
 
-    @Test
-    @DisplayName("Should create wallet for existing user")
-    void shouldCreateWalletForExistingUser() {
-        // Given
-        UUID userId = UUID.randomUUID();
-        User user = new User();
-        user.setId(userId);
-        
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        // The service saves the user, which cascades to wallet. 
-        // We mock save to return the user.
-        when(userRepository.save(user)).thenReturn(user);
+    @Nested
+    @DisplayName("createWalletForUser")
+    class CreateWallet {
 
-        // When
-        Wallet result = walletService.createWalletForUser(userId);
+        @Test
+        @DisplayName("Should create wallet with zero balance")
+        void shouldCreateWalletForExistingUser() {
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            when(walletRepository.existsByUserId(userId)).thenReturn(false);
+            when(userRepository.save(user)).thenReturn(user);
 
-        // Then
-        assertNotNull(result);
-        assertEquals(BigDecimal.ZERO, result.getBalance());
+            Wallet result = walletService.createWalletForUser(userId);
 
-        
-        // Verify interactions
-        verify(userRepository, times(1)).findById(userId); // Called twice due to second assert but changed to 1
-        verify(userRepository, times(1)).save(user); //
+            assertNotNull(result);
+            assertEquals(BigDecimal.ZERO, result.getBalance());
+            verify(userRepository, times(1)).findById(userId);
+            verify(userRepository, times(1)).save(user);
+        }
+
+        @Test
+        @DisplayName("Should throw 404 when user not found")
+        void shouldThrowWhenUserNotFound() {
+            when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> walletService.createWalletForUser(userId));
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw 400 when user already has a wallet")
+        void shouldThrowWhenUserAlreadyHasWallet() {
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            when(walletRepository.existsByUserId(userId)).thenReturn(true);
+
+            assertThatThrownBy(() -> walletService.createWalletForUser(userId))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("User already has a wallet");
+            verify(userRepository, never()).save(any());
+        }
     }
-
-    @Test
-    @DisplayName("Should throw exception when user not found")
-    void shouldThrowExceptionWhenUserNotFound() {
-        // Given
-        UUID userId = UUID.randomUUID();
-        when(userRepository.findById(userId)).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThrows(ResourceNotFoundException.class, () -> walletService.createWalletForUser(userId));
-        verify(userRepository, never()).save(any());
-    }
-
-    // ── NEW test ──────────────────────────────────────────────────────────
     @Test
     @DisplayName("Should throw BadRequestException when user already has a wallet")
     void shouldThrowWhenUserAlreadyHasWallet() {
@@ -102,6 +119,135 @@ class WalletServiceImplTest {
 
         // save must NEVER be called — stopped before it
         verify(userRepository, never()).save(any());
+    }
+
+
+    // ════════════════════════════════════════════════════════════
+    // deposit — NEW
+    // ════════════════════════════════════════════════════════════
+    @Nested
+    @DisplayName("deposit")
+    class Deposit {
+
+        @Test
+        @DisplayName("Should add amount to balance and record DEPOSIT transaction")
+        void shouldDepositAndUpdateBalance() {
+            // wallet starts at 100, depositing 50 → should become 150
+            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+            when(walletRepository.save(wallet)).thenReturn(wallet);
+
+            Wallet result = walletService.deposit(walletId, BigDecimal.valueOf(50));
+
+            // balance updated correctly
+            assertThat(result.getBalance())
+                    .isEqualByComparingTo(BigDecimal.valueOf(150));
+
+            // a DEPOSIT transaction was saved
+            ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
+            verify(transactionRepository).save(captor.capture());
+            assertThat(captor.getValue().getType()).isEqualTo(TransactionType.DEPOSIT);
+            assertThat(captor.getValue().getAmount())
+                    .isEqualByComparingTo(BigDecimal.valueOf(50));
+        }
+
+        @Test
+        @DisplayName("Should throw 404 when wallet not found")
+        void shouldThrowWhenWalletNotFound() {
+            when(walletRepository.findById(walletId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> walletService.deposit(walletId, BigDecimal.TEN))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+
+    // ════════════════════════════════════════════════════════════
+    // withdraw — NEW
+    // ════════════════════════════════════════════════════════════
+    @Nested
+    @DisplayName("withdraw")
+    class Withdraw {
+
+        @Test
+        @DisplayName("Should subtract amount and record WITHDRAWAL transaction")
+        void shouldWithdrawAndUpdateBalance() {
+            // wallet starts at 100, withdrawing 40 → should become 60
+            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+            when(walletRepository.save(wallet)).thenReturn(wallet);
+
+            Wallet result = walletService.withdraw(walletId, BigDecimal.valueOf(40));
+
+            assertThat(result.getBalance())
+                    .isEqualByComparingTo(BigDecimal.valueOf(60));
+
+            ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
+            verify(transactionRepository).save(captor.capture());
+            assertThat(captor.getValue().getType()).isEqualTo(TransactionType.WITHDRAWAL);
+        }
+
+        @Test
+        @DisplayName("Should allow withdrawal of exact balance")
+        void shouldAllowWithdrawingExactBalance() {
+            // withdraw exactly 100 from 100 → balance becomes 0
+            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+            when(walletRepository.save(wallet)).thenReturn(wallet);
+
+            Wallet result = walletService.withdraw(walletId, BigDecimal.valueOf(100));
+
+            assertThat(result.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+        }
+
+        @Test
+        @DisplayName("Should throw 400 when insufficient funds")
+        void shouldThrowWhenInsufficientFunds() {
+            // wallet has 100, trying to withdraw 200
+            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+
+            assertThatThrownBy(() -> walletService.withdraw(walletId, BigDecimal.valueOf(200)))
+                    .isInstanceOf(InsufficientFundsException.class)
+                    .hasMessageContaining("Insufficient funds");
+
+            // balance must NOT change, save must NOT be called
+            verify(walletRepository, never()).save(any());
+            verify(transactionRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw 404 when wallet not found")
+        void shouldThrowWhenWalletNotFound() {
+            when(walletRepository.findById(walletId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> walletService.withdraw(walletId, BigDecimal.TEN))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+
+    // ════════════════════════════════════════════════════════════
+    // getBalance — NEW
+    // ════════════════════════════════════════════════════════════
+    @Nested
+    @DisplayName("getBalance")
+    class GetBalance {
+
+        @Test
+        @DisplayName("Should return current wallet balance")
+        void shouldReturnBalance() {
+            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+
+            BigDecimal balance = walletService.getBalance(walletId);
+
+            assertThat(balance).isEqualByComparingTo(BigDecimal.valueOf(100));
+        }
+
+        @Test
+        @DisplayName("Should throw 404 when wallet not found")
+        void shouldThrowWhenWalletNotFound() {
+            when(walletRepository.findById(walletId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> walletService.getBalance(walletId))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
     }
 
 

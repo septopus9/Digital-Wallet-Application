@@ -1,5 +1,6 @@
 package com.rs.payments.wallet.controller;
 
+import com.rs.payments.wallet.dto.AmountRequest;
 import com.rs.payments.wallet.dto.CreateWalletRequest;
 import com.rs.payments.wallet.model.Wallet;
 import com.rs.payments.wallet.service.WalletService;
@@ -11,10 +12,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/wallets")
@@ -24,6 +25,7 @@ public class WalletController {
     private final WalletService walletService;
 
     public WalletController(WalletService walletService) {
+
         this.walletService = walletService;
     }
 
@@ -47,4 +49,47 @@ public class WalletController {
         Wallet wallet = walletService.createWalletForUser(request.getUserId());
         return ResponseEntity.status(HttpStatus.CREATED).body(wallet); // ← changed from .ok()
     }
+
+
+    // ── NEW endpoint 1: deposit ───────────────────────────────────────────
+    // ── NEW endpoint 1: deposit ───────────────────────────────────────────
+    @Operation(summary = "Deposit funds into a wallet",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Deposit successful"),
+                    @ApiResponse(responseCode = "400", description = "Invalid amount"),
+                    @ApiResponse(responseCode = "404", description = "Wallet not found")
+            })
+    @PostMapping("/{id}/deposit")
+    public ResponseEntity<Wallet> deposit(@PathVariable UUID id,
+                                          @Valid @RequestBody AmountRequest request){
+        Wallet updated = walletService.deposit(id, request.getAmount());
+        return ResponseEntity.ok(updated);
+
+    }
+
+    // ── NEW endpoint 2: withdraw ──────────────────────────────────────────
+    @Operation(summary = "Withdraw funds from a wallet",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Withdrawal successful"),
+                    @ApiResponse(responseCode = "400", description = "Insufficient funds or invalid amount"),
+                    @ApiResponse(responseCode = "404", description = "Wallet not found")
+            })
+    @PostMapping("/{id}/withdraw")
+    public ResponseEntity<Wallet> withdraw(@PathVariable UUID id,
+                                           @Valid @RequestBody AmountRequest request) {
+        Wallet updated = walletService.withdraw(id, request.getAmount());
+        return ResponseEntity.ok(updated);
+    }
+
+    // ── NEW endpoint 3: balance ───────────────────────────────────────────
+    @Operation(summary = "Get wallet balance",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Balance retrieved"),
+                    @ApiResponse(responseCode = "404", description = "Wallet not found")
+            })
+    @GetMapping("/{id}/balance")
+    public ResponseEntity<BigDecimal> getBalance(@PathVariable UUID id) {
+        return ResponseEntity.ok(walletService.getBalance(id));
+    }
+
 }
