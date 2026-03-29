@@ -1,6 +1,7 @@
 package com.rs.payments.wallet.controller;
 
 import com.rs.payments.wallet.BaseIntegrationTest;
+import com.rs.payments.wallet.dto.AmountRequest;
 import com.rs.payments.wallet.dto.CreateWalletRequest;
 import com.rs.payments.wallet.model.User;
 import com.rs.payments.wallet.model.Wallet;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,5 +88,107 @@ class WalletIntegrationTest extends BaseIntegrationTest {
                 .satisfies(e -> assertThat(((HttpClientErrorException) e).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_REQUEST));
     }
+
+    // ── NEW: deposit integration tests ───────────────────────────────────────
+    @Test
+    @DisplayName("Should deposit funds and return updated balance")
+    void shouldDepositFunds() {
+        User user = createUser();
+        Wallet wallet = createWallet(user.getId());
+
+        String depositUrl = "http://localhost:" + port
+                + "/wallets/" + wallet.getId() + "/deposit";
+
+        ResponseEntity<Wallet> response = restTemplate.postForEntity(
+                depositUrl, new AmountRequest(BigDecimal.valueOf(150)), Wallet.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().getBalance())
+                .isEqualByComparingTo(BigDecimal.valueOf(150));
+    }
+
+    @Test
+    @DisplayName("Should return 400 when depositing zero")
+    void shouldReturn400WhenDepositingZero() {
+        User user = createUser();
+        Wallet wallet = createWallet(user.getId());
+
+        String depositUrl = "http://localhost:" + port
+                + "/wallets/" + wallet.getId() + "/deposit";
+
+        assertThatThrownBy(() -> restTemplate.postForEntity(
+                depositUrl, new AmountRequest(BigDecimal.ZERO), String.class))
+                .satisfies(e -> assertThat(((HttpClientErrorException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    @DisplayName("Should withdraw funds and return updated balance")
+    void shouldWithdrawFunds() {
+        User user = createUser();
+        Wallet wallet = createWallet(user.getId());
+        deposit(wallet.getId(), BigDecimal.valueOf(200)); // fund first
+
+        String withdrawUrl = "http://localhost:" + port
+                + "/wallets/" + wallet.getId() + "/withdraw";
+
+        ResponseEntity<Wallet> response = restTemplate.postForEntity(
+                withdrawUrl, new AmountRequest(BigDecimal.valueOf(75)), Wallet.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().getBalance())
+                .isEqualByComparingTo(BigDecimal.valueOf(125));
+    }
+
+    @Test
+    @DisplayName("Should return 400 on insufficient funds")
+    void shouldReturn400WhenInsufficientFunds() {
+        User user = createUser();
+        Wallet wallet = createWallet(user.getId());
+        // wallet has 0 balance, trying to withdraw 100
+
+        String withdrawUrl = "http://localhost:" + port
+                + "/wallets/" + wallet.getId() + "/withdraw";
+
+        assertThatThrownBy(() -> restTemplate.postForEntity(
+                withdrawUrl, new AmountRequest(BigDecimal.valueOf(100)), String.class))
+                .satisfies(e -> assertThat(((HttpClientErrorException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    @DisplayName("Should return correct balance")
+    void shouldReturnBalance() {
+        User user = createUser();
+        Wallet wallet = createWallet(user.getId());
+        deposit(wallet.getId(), BigDecimal.valueOf(300));
+
+        String balanceUrl = "http://localhost:" + port
+                + "/wallets/" + wallet.getId() + "/balance";
+
+        ResponseEntity<BigDecimal> response = restTemplate.getForEntity(
+                balanceUrl, BigDecimal.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualByComparingTo(BigDecimal.valueOf(300));
+    }
+
+
+    // helper — creates wallet via API
+    private Wallet createWallet(UUID userId) {
+        CreateWalletRequest req = new CreateWalletRequest();
+        req.setUserId(userId);
+        return restTemplate.postForEntity(url(), req, Wallet.class).getBody();
+    }
+
+    // helper — deposits money via API
+    private void deposit(UUID walletId, BigDecimal amount) {
+        String depositUrl = "http://localhost:" + port
+                + "/wallets/" + walletId + "/deposit";
+        restTemplate.postForEntity(depositUrl, new AmountRequest(amount), Wallet.class);
+    }
+
+
+
 
 }
