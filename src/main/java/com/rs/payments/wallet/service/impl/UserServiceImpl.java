@@ -1,9 +1,11 @@
 package com.rs.payments.wallet.service.impl;
 
+import com.rs.payments.wallet.exception.DuplicateResourceException;
 import com.rs.payments.wallet.model.User;
 import com.rs.payments.wallet.repository.UserRepository;
 import com.rs.payments.wallet.service.UserService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -15,7 +17,18 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional           // ← ADD THIS
     public User createUser(User user) {
+
+        if (userRepository.existsByUsername(user.getUsername())){
+            throw new DuplicateResourceException(
+                    "Username already taken: " + user.getUsername());
+        }
+        if (userRepository.existsByEmail(user.getEmail())){
+            throw new DuplicateResourceException(
+                    "Email already registered: " + user.getEmail());
+
+        }
         return userRepository.save(user);
     }
 }
