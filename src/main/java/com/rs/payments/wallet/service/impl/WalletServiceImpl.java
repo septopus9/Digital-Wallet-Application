@@ -1,5 +1,6 @@
 package com.rs.payments.wallet.service.impl;
 
+import com.rs.payments.wallet.dto.TransferResponse;
 import com.rs.payments.wallet.exception.BadRequestException;
 import com.rs.payments.wallet.exception.InsufficientFundsException;
 import com.rs.payments.wallet.exception.ResourceNotFoundException;
@@ -101,6 +102,45 @@ public class WalletServiceImpl implements WalletService {
         return findWalletById(walletId).getBalance();
     }
 
+    @Override
+    @Transactional          // ← CRITICAL — wraps BOTH wallet updates in one DB transaction
+    public TransferResponse transfer(UUID fromWalletId, UUID toWalletId, BigDecimal amount) {
+
+        // Rule 1: cannot transfer to yourself
+        if (fromWalletId.equals(toWalletId)){
+            throw new BadRequestException("Cannot transfer to the same wallet");
+
+        }
+
+        // Load both wallets — throws 404 if either doesn't exist
+        Wallet from = findWalletById(fromWalletId);
+        Wallet to = findWalletById(toWalletId);
+
+        // Rule 2: source wallet must have enough money
+        if (from.getBalance().compareTo(amount)<0){
+            throw new InsufficientFundsException("Insufficient funds: available "
+                    + from.getBalance() + ", requested " + amount);
+
+        }
+
+        // Move the money
+        from.setBalance(from.getBalance().subtract(amount));
+        to.setBalance(to.getBalance().add(amount));
+
+
+        // Save both wallets
+        walletRepository.save(from);
+        walletRepository.save(to);
+
+
+        // Create two transaction records — one on each wallet
+        recordTransaction(from,amount,TransactionType.TRANSFER_OUT,"Transfer to wallet "+toWalletId);
+        recordTransaction(to,amount,TransactionType.TRANSFER_IN,"Transfer from wallet "+fromWalletId);
+
+
+        return new TransferResponse(fromWalletId,toWalletId,amount,from.getBalance());
+    }
+
 
 
 
@@ -117,6 +157,8 @@ public class WalletServiceImpl implements WalletService {
                 .build();
         transactionRepository.save(transaction);
     }
+
+
 
 
 

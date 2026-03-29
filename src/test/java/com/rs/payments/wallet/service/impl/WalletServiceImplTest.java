@@ -1,5 +1,7 @@
 package com.rs.payments.wallet.service.impl;
 
+
+import com.rs.payments.wallet.dto.TransferResponse;
 import com.rs.payments.wallet.exception.BadRequestException;
 import com.rs.payments.wallet.exception.InsufficientFundsException;
 import com.rs.payments.wallet.exception.ResourceNotFoundException;
@@ -21,13 +23,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+
 
 @ExtendWith(MockitoExtension.class)
 class WalletServiceImplTest {
@@ -224,28 +229,107 @@ class WalletServiceImplTest {
 
 
     // ════════════════════════════════════════════════════════════
-    // getBalance — NEW
-    // ════════════════════════════════════════════════════════════
+// transfer — NEW for Step 5
+// ════════════════════════════════════════════════════════════
     @Nested
-    @DisplayName("getBalance")
-    class GetBalance {
+    @DisplayName("transfer")
+    class Transfer {
 
-        @Test
-        @DisplayName("Should return current wallet balance")
-        void shouldReturnBalance() {
-            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+        private UUID toWalletId;
+        private Wallet toWallet;
 
-            BigDecimal balance = walletService.getBalance(walletId);
-
-            assertThat(balance).isEqualByComparingTo(BigDecimal.valueOf(100));
+        @BeforeEach
+        void setUp() {
+            toWalletId = UUID.randomUUID();
+            toWallet   = new Wallet();
+            toWallet.setId(toWalletId);
+            toWallet.setBalance(BigDecimal.valueOf(50));
+            // note: the outer setUp() already set wallet (fromWallet) with balance 100
         }
 
         @Test
-        @DisplayName("Should throw 404 when wallet not found")
-        void shouldThrowWhenWalletNotFound() {
+        @DisplayName("Should transfer funds and create two transaction records")
+        void shouldTransferFundsAndCreateTwoTransactions() {
+            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+            when(walletRepository.findById(toWalletId)).thenReturn(Optional.of(toWallet));
+            when(walletRepository.save(wallet)).thenReturn(wallet);
+            when(walletRepository.save(toWallet)).thenReturn(toWallet);
+
+            TransferResponse response = walletService.transfer(
+                    walletId, toWalletId, BigDecimal.valueOf(30));
+
+            // response fields correct
+            assertThat(response.getFromWalletId()).isEqualTo(walletId);
+            assertThat(response.getToWalletId()).isEqualTo(toWalletId);
+            assertThat(response.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(30));
+
+            // balances updated correctly
+            assertThat(wallet.getBalance()).isEqualByComparingTo(BigDecimal.valueOf(70));   // 100-30
+            assertThat(toWallet.getBalance()).isEqualByComparingTo(BigDecimal.valueOf(80)); // 50+30
+
+            // exactly TWO transaction records saved
+            ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
+            verify(transactionRepository, times(2)).save(captor.capture());
+
+            // one TRANSFER_OUT and one TRANSFER_IN
+            List<TransactionType> types = captor.getAllValues().stream()
+                    .map(Transaction::getType)
+                    .toList();
+            assertThat(types).containsExactlyInAnyOrder(
+                    TransactionType.TRANSFER_OUT,
+                    TransactionType.TRANSFER_IN);
+        }
+
+        @Test
+        @DisplayName("Should throw 400 and save nothing when insufficient funds")
+        void shouldThrowAndSaveNothingWhenInsufficientFunds() {
+            // wallet has 100, trying to transfer 500
+            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+            when(walletRepository.findById(toWalletId)).thenReturn(Optional.of(toWallet));
+
+            assertThatThrownBy(() ->
+                    walletService.transfer(walletId, toWalletId, BigDecimal.valueOf(500)))
+                    .isInstanceOf(InsufficientFundsException.class)
+                    .hasMessageContaining("Insufficient funds");
+
+            // neither wallet was saved — nothing changed
+            verify(walletRepository, never()).save(any());
+            // no transaction records created
+            verify(transactionRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw 400 when transferring to same wallet")
+        void shouldThrowWhenSameWallet() {
+            // fromWalletId == toWalletId
+            assertThatThrownBy(() ->
+                    walletService.transfer(walletId, walletId, BigDecimal.TEN))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("Cannot transfer to the same wallet");
+
+            // no DB calls at all
+            verify(walletRepository, never()).findById(any());
+            verify(walletRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw 404 when source wallet not found")
+        void shouldThrowWhenSourceWalletNotFound() {
             when(walletRepository.findById(walletId)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> walletService.getBalance(walletId))
+            assertThatThrownBy(() ->
+                    walletService.transfer(walletId, toWalletId, BigDecimal.TEN))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("Should throw 404 when destination wallet not found")
+        void shouldThrowWhenDestinationWalletNotFound() {
+            when(walletRepository.findById(walletId)).thenReturn(Optional.of(wallet));
+            when(walletRepository.findById(toWalletId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() ->
+                    walletService.transfer(walletId, toWalletId, BigDecimal.TEN))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
     }
