@@ -1,136 +1,254 @@
-# Wallet Service Microservice
+# Wallet Service
 
-Spring Boot 4 application for managing digital wallets in a payments system. Supports user registration, wallet creation, deposits, withdrawals, and peer-to-peer transfers with atomic balance updates and transaction logging.
+A production-ready RESTful microservice built with **Java 17** and **Spring Boot 4**, designed to manage digital wallets in a payments system. Supports user registration, wallet creation, fund deposits and withdrawals, peer-to-peer transfers, and full transaction history — all backed by PostgreSQL with atomic database operations.
 
-## Overview
+---
 
-This repository provides a project skeleton for a RESTful microservice using Java 17, Gradle Kotlin DSL, Spring Data JPA, and PostgreSQL. The initial implementation covers user registration and wallet creation with full test coverage. Extend it to implement additional features per [INSTRUCTIONS.md](INSTRUCTIONS.md).
+## Author
 
-Distributed as a ZIP archive including Git history for tracking development progress.
+**Sushanta Halder**  
+Java Developer | Spring Boot | Microservices  
+📧 sushantahalder.dev@gmail.com  
+🔗 [GitHub](https://github.com/sushantahalder)
 
-Group: `com.rs.payments`. Version: `0.0.1-SNAPSHOT`. Description: `wallet-service`.
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Language | Java 17 |
+| Framework | Spring Boot 4, Spring Data JPA |
+| Build Tool | Gradle 9 (Kotlin DSL) |
+| Database | PostgreSQL |
+| API Docs | SpringDoc OpenAPI / Swagger UI |
+| Testing | JUnit 5, Mockito, Testcontainers |
+| Code Quality | Checkstyle, PMD, SpotBugs, JaCoCo |
+| Containerization | Docker, Docker Compose |
+
+---
+
+## Features
+
+- **User Management** — Register users with username and unique email
+- **Wallet Management** — Create one wallet per user, starting at zero balance
+- **Deposits** — Add funds to a wallet with transaction logging
+- **Withdrawals** — Deduct funds with insufficient-balance guard
+- **Peer-to-Peer Transfers** — Atomic transfer between two wallets with dual transaction records
+- **Balance Inquiry** — Real-time balance retrieval
+- **Global Exception Handling** — Consistent error responses for 400, 404, 409, and 422 scenarios
+- **Full Test Coverage** — Unit tests (Mockito), controller slice tests (MockMvc), and integration tests (Testcontainers + real PostgreSQL)
+
+---
+
+## Project Structure
+
+```
+wallet-service/
+├── src/
+│   ├── main/java/com/sh/payments/wallet/
+│   │   ├── WalletServiceApplication.java
+│   │   ├── controller/          # REST controllers (User, Wallet, Transfer)
+│   │   ├── service/             # Service interfaces
+│   │   │   └── impl/           # WalletServiceImpl, UserServiceImpl
+│   │   ├── model/               # JPA entities (User, Wallet, Transaction)
+│   │   ├── repository/          # Spring Data JPA repositories
+│   │   ├── dto/                 # Request/response DTOs
+│   │   └── exception/           # Custom exceptions + GlobalExceptionHandler
+│   ├── main/resources/
+│   │   └── application.yml
+│   ├── test/java/               # Unit + controller slice tests
+│   └── integration/java/        # Integration tests (Testcontainers)
+├── config/
+│   ├── checkstyle/checkstyle.xml
+│   └── pmd/ruleset.xml
+├── docker-compose.yml
+├── Dockerfile
+└── build.gradle.kts
+```
+
+---
 
 ## Prerequisites
 
-- Java 17 (JDK, enforced via toolchain)
-- Gradle 8.x (via wrapper)
-- Docker and Docker Compose (for local database and Testcontainers)
-- IntelliJ IDEA or compatible IDE (recommended for Spring Boot and Gradle support)
-- Git (for history inspection)
+- Java 17 (JDK)
+- Gradle 9 (wrapper included — no manual install needed)
+- Docker & Docker Compose (for local DB and Testcontainers)
 
-## Local Setup
+---
 
-1. Extract the ZIP archive to a directory: `unzip wallet-service.zip` (or use GUI tool).
-2. Navigate to the project root: `cd wallet-service`.
-3. Inspect Git history: `git log --oneline` (demonstrates initial commits).
-4. Import into IDE: Open as Gradle project in IntelliJ (File > Open > select `build.gradle.kts`).
+## Getting Started
 
-## Running the Application
+### 1. Clone the Repository
 
-### Full Stack (Docker Compose)
+```bash
+git clone https://github.com/sushantahalder/wallet-service.git
+cd wallet-service
+```
 
-Starts PostgreSQL and the application container. (Assumes `docker-compose.yml` presence; configure as needed.)
+### 2. Run with Docker Compose (Recommended)
+
+Spins up both PostgreSQL and the application:
 
 ```bash
 docker-compose up --build
 ```
 
 - Application: http://localhost:8080
-- Database: localhost:5432 (user: `user`, password: `password`, db: `walletdb`)
-- Logs: Monitor via `docker-compose logs -f`
+- Swagger UI: http://localhost:8080/swagger-ui.html
+- Database: `localhost:5432` — db: `walletdb`, user: `user`, password: `s3cr3t`
 
-Stop with `docker-compose down`.
+Stop everything:
 
-### Development Mode (IDE/Gradle)
+```bash
+docker-compose down
+```
 
-1. Start PostgreSQL: `docker-compose up -d db`.
-2. Run application: `./gradlew bootRun` (or IDE run configuration for main class).
+### 3. Run in Development Mode
 
-Configuration uses `application.yml` for local datasource (update URL if needed).
+Start only the database:
 
-## API Documentation
+```bash
+docker-compose up -d db
+```
 
-- OpenAPI/Swagger UI: http://localhost:8080/swagger-ui.html
-- OpenAPI JSON: http://localhost:8080/v3/api-docs
+Then run the application:
 
-Endpoints (initial):
-- `POST /users`: Create user.
-- `POST /wallets`: Create wallet for user.
+```bash
+./gradlew bootRun
+```
 
-## Code Quality Checks
+---
 
-Run static analysis tools via Gradle tasks.
+## API Reference
 
-- Checkstyle (main sources): `./gradlew checkstyleMain`
-- PMD (main sources, custom ruleset): `./gradlew pmdMain`
-- SpotBugs (main sources, HTML/XML reports in `build/reports/spotbugs`): `./gradlew spotbugsMain`
-- All checks: `./gradlew check` (includes unit/integration tests)
+Full interactive docs at **http://localhost:8080/swagger-ui.html** once running.
 
-Failures are ignored by default; review reports for issues.
+### Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/users` | Register a new user |
+
+**Request Body:**
+```json
+{
+  "username": "sushanta",
+  "email": "sushanta@example.com"
+}
+```
+
+### Wallets
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/wallets` | Create a wallet for a user |
+| POST | `/wallets/{id}/deposit` | Deposit funds |
+| POST | `/wallets/{id}/withdraw` | Withdraw funds |
+| GET | `/wallets/{id}/balance` | Get current balance |
+
+**Deposit / Withdraw Request Body:**
+```json
+{
+  "amount": 500.00
+}
+```
+
+### Transfers
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/transfers` | Transfer funds between two wallets |
+
+**Request Body:**
+```json
+{
+  "fromWalletId": "uuid-of-source-wallet",
+  "toWalletId": "uuid-of-destination-wallet",
+  "amount": 200.00
+}
+```
+
+---
+
+## Error Handling
+
+All errors return a consistent JSON structure:
+
+```json
+{
+  "status": 404,
+  "error": "Not Found",
+  "message": "Wallet not found with id: ...",
+  "timestamp": "2025-04-18T10:30:00"
+}
+```
+
+| HTTP Status | Scenario |
+|-------------|----------|
+| 400 | Invalid request (e.g. self-transfer, zero amount) |
+| 404 | User or Wallet not found |
+| 409 | Duplicate resource (e.g. email already registered) |
+| 422 | Insufficient funds |
+
+---
 
 ## Running Tests
 
-Uses JUnit 5, Mockito, and Testcontainers for PostgreSQL. Tests in `src/test/java`; integration tests in `src/integration/java` (tagged `@Tag("integration")`).
-
-- Unit tests: `./gradlew test`
-- Integration tests: `./gradlew integrationTest`
-- All tests: `./gradlew check`
-- Coverage report (JaCoCo, HTML in `build/reports/jacoco/test/html/index.html`, XML in `build/reports/jacoco/test/jacocoTestReport.xml`): `./gradlew jacocoTestReport` (runs after tests)
-
-Aim for 100% coverage on new code.
-
-## Building the Project
-
 ```bash
-./gradlew build
+# Unit tests only
+./gradlew test
+
+# Integration tests only (requires Docker for Testcontainers)
+./gradlew integrationTest
+
+# All tests + coverage report
+./gradlew check
 ```
 
-Produces executable JAR: `build/libs/wallet-service-0.0.1-SNAPSHOT.jar`.
+JaCoCo coverage report: `build/reports/jacoco/test/html/index.html`
 
-Run JAR: `java -jar build/libs/wallet-service-0.0.1-SNAPSHOT.jar`.
+---
 
-Clean build: `./gradlew clean build`.
+## Code Quality
+
+```bash
+./gradlew checkstyleMain   # Checkstyle
+./gradlew pmdMain          # PMD static analysis
+./gradlew spotbugsMain     # SpotBugs — reports in build/reports/spotbugs/
+./gradlew check            # All checks + tests
+```
+
+---
 
 ## Database Schema
 
-Hibernate DDL auto: `update` (dev only). Entities (using UUID for primary keys):
-- `users`: id (UUID), username, email (unique).
-- `wallets`: id (UUID), balance (one-to-one with user).
-- `transactions`: id (UUID), amount, type, timestamp.
+Managed by Hibernate (`ddl-auto: update`). All entities use UUID primary keys.
 
-## Further Development
+| Table | Columns |
+|-------|---------|
+| `users` | `id` (UUID PK), `username`, `email` (unique) |
+| `wallets` | `id` (UUID PK), `balance` (decimal), `user_id` (FK → users) |
+| `transactions` | `id` (UUID PK), `wallet_id` (FK → wallets), `amount`, `type`, `description`, `timestamp` |
 
-Implement user stories in [INSTRUCTIONS.md](INSTRUCTIONS.md) using TDD. 
-Commit incrementally to the main branch with descriptive messages (e.g., "Add failing test for deposit endpoint").
+**Transaction Types:** `DEPOSIT`, `WITHDRAWAL`, `TRANSFER_IN`, `TRANSFER_OUT`
 
-For CI: `.github/workflows/ci.yml` runs on push/PR (adapt as needed).
+---
 
-## Submission
+## Key Design Decisions
 
-To prepare the project for submission, run:
+- **`@Transactional` on all write operations** — ensures atomicity; for transfers, both wallet debits/credits and both transaction log entries commit or rollback together
+- **One wallet per user** — enforced at service layer via `walletRepository.existsByUserId()`
+- **UUID primary keys** — avoids sequential ID enumeration vulnerabilities
+- **DTOs for all API I/O** — JPA entities never exposed directly in the API contract
+- **Constructor injection throughout** — all dependencies injected via constructor for clean testability
+- **Testcontainers for integration tests** — real PostgreSQL in CI, no in-memory DB mismatch surprises
+
+---
+
+## Building a JAR
 
 ```bash
-./gradlew prepareSubmission
+./gradlew build
+java -jar build/libs/wallet-service-0.0.1-SNAPSHOT.jar
 ```
-
-This creates a ZIP file: `submission-<your-username>-<date>.zip`.
-
-**Important**: 
-- If the file name ends with `-anonymous`, the submission **will not be accepted**.
-- Ensure your git author name is set correctly:
-  ```bash
-  git config user.name "Your Name"
-  git config user.email "your.email@example.com"
-  ```
-- Commit your changes before running the task.
-
-## Troubleshooting
-
-- **Port conflict**: Change `server.port` in `application.yml`.
-- **Database connection**: Verify Docker container health (`docker ps`); check logs.
-- **Gradle issues**: `./gradlew clean` and retry; ensure Java 17 via `java -version`.
-- **Tests fail**: Ensure Docker for Testcontainers; use `create-drop` mode in tests.
-- **Lombok issues**: Enable annotation processing in IDE.
-
-
-For questions, refer to [INSTRUCTIONS.md](INSTRUCTIONS.md).

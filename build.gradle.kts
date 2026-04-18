@@ -36,7 +36,7 @@ configure<PmdExtension> {
     ruleSets = listOf()
 }
 
-group = "com.rs.payments"
+group = "com.sh.payments"
 version = "0.0.1-SNAPSHOT"
 description = "wallet-service"
 
