@@ -8,8 +8,8 @@ A production-ready RESTful microservice built with **Java 17** and **Spring Boot
 
 **Sushanta Halder**  
 Java Developer | Spring Boot | Microservices  
-📧 sushantahalder.dev@gmail.com  
-🔗 [GitHub](https://github.com/sushantahalder)
+📧 haldersusanta660@gmail.com
+🔗 [GitHub](https://github.com/septopus9/Digital-Wallet-Application)
 
 ---
 
